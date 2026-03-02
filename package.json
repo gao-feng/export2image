@@ -1,19 +1,26 @@
 {
   "name": "export2image",
   "version": "1.0.0",
-  "description": "根据文档长度、标题个数和手机屏幕尺寸生成图片并导出",
+  "description": "将 Obsidian Markdown 文档导出为图片",
   "main": "main.js",
+  "bin": {
+    "export2image": "./export2image"
+  },
   "scripts": {
     "build": "node build.js",
+    "build:cli": "node build.js --cli",
+    "build:all": "node build.js && node build.js --cli",
     "dev": "node build.js --watch"
   },
   "dependencies": {
     "file-saver": "^2.0.5",
     "html2canvas": "^1.4.1",
-    "marked": "^17.0.3"
+    "marked": "^17.0.3",
+    "puppeteer": "^24.37.5"
   },
   "devDependencies": {
     "@types/file-saver": "^2.0.7",
+    "@types/puppeteer": "^5.4.7",
     "esbuild": "^0.27.3",
     "obsidian": "^1.4.0",
     "typescript": "^5.3.0"

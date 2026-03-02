@@ -193,19 +193,18 @@ function markdownToHtml(markdown: string, theme: 'light' | 'dark', fontSize: num
 </html>`;
 }
 
-// 生成图片
+// 生成图片 - 根据内容自动调整高度
 async function generateImage(
 	browser: Browser,
 	html: string,
-	width: number,
-	height: number
+	width: number
 ): Promise<Buffer> {
 	const page = await browser.newPage();
 	
-	// 设置视口大小
+	// 设置较大的初始视口，内容高度会根据实际内容调整
 	await page.setViewport({
 		width: width,
-		height: height,
+		height: 10000,
 		deviceScaleFactor: 2
 	});
 	
@@ -215,16 +214,18 @@ async function generateImage(
 	// 等待内容渲染
 	await page.waitForSelector('body');
 	
+	// 添加一个小延迟确保所有内容渲染完成
+	await new Promise(resolve => setTimeout(resolve, 100));
+	
 	// 获取内容的实际高度
 	const bodyHeight = await page.evaluate(() => {
 		return document.body.scrollHeight;
 	});
 	
-	// 重新设置视口高度以适应内容
-	const actualHeight = Math.max(height, bodyHeight);
+	// 重新设置视口高度为内容实际高度
 	await page.setViewport({
 		width: width,
-		height: actualHeight,
+		height: bodyHeight,
 		deviceScaleFactor: 2
 	});
 	
@@ -258,12 +259,11 @@ async function main() {
 	
 	console.log(`📄 读取文件: ${options.input}`);
 	
-	// 获取手机尺寸
+	// 获取手机宽度（高度会根据内容自动调整）
 	const phoneSize = PHONE_SIZES[options.phoneModel] || PHONE_SIZES['iPhone 14'];
 	const width = phoneSize.width;
-	const height = phoneSize.height;
 	
-	console.log(`📱 手机型号: ${options.phoneModel} (${width}x${height})`);
+	console.log(`📱 手机宽度: ${width}px (高度根据内容自动调整)`);
 	console.log(`🎨 主题: ${options.theme}`);
 	
 	// 检查是否有 #e2i 标签
@@ -298,7 +298,7 @@ async function main() {
 			console.log(`🖼️  生成图片 ${i + 1}/${blocks.length}...`);
 			
 			const html = markdownToHtml(blocks[i], options.theme, options.fontSize);
-			const screenshot = await generateImage(browser, html, width, height);
+			const screenshot = await generateImage(browser, html, width);
 			
 			// 保存图片
 			let savePath: string;
