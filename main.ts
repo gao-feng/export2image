@@ -235,34 +235,51 @@ export default class Export2ImagePlugin extends Plugin {
 
 	// 简单的Markdown转HTML
 	markdownToHtml(markdown: string): string {
+		// 先处理标题，添加样式
 		let html = markdown
-			// 标题
-			.replace(/^######\s+(.*)$/gm, '<h6>$1</h6>')
-			.replace(/^#####\s+(.*)$/gm, '<h5>$1</h5>')
-			.replace(/^####\s+(.*)$/gm, '<h4>$1</h4>')
-			.replace(/^###\s+(.*)$/gm, '<h3>$1</h3>')
-			.replace(/^##\s+(.*)$/gm, '<h2>$1</h2>')
-			.replace(/^#\s+(.*)$/gm, '<h1>$1</h1>')
+			// 标题 - 添加样式
+			.replace(/^######\s+(.*)$/gm, '<h6 style="font-size: 14px; font-weight: 600; margin: 16px 0 8px 0;">$1</h6>')
+			.replace(/^#####\s+(.*)$/gm, '<h5 style="font-size: 16px; font-weight: 600; margin: 16px 0 8px 0;">$1</h5>')
+			.replace(/^####\s+(.*)$/gm, '<h4 style="font-size: 18px; font-weight: 600; margin: 16px 0 8px 0;">$1</h4>')
+			.replace(/^###\s+(.*)$/gm, '<h3 style="font-size: 20px; font-weight: 600; margin: 16px 0 8px 0;">$1</h3>')
+			.replace(/^##\s+(.*)$/gm, '<h2 style="font-size: 22px; font-weight: 600; margin: 16px 0 8px 0;">$1</h2>')
+			.replace(/^#\s+(.*)$/gm, '<h1 style="font-size: 24px; font-weight: 700; margin: 16px 0 12px 0;">$1</h1>')
 			// 粗体
 			.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
 			// 斜体
 			.replace(/\*(.*?)\*/g, '<em>$1</em>')
+			// 删除线
+			.replace(/~~(.*?)~~/g, '<del>$1</del>')
 			// 代码
-			.replace(/`([^`]+)`/g, '<code style="background: #f5f5f5; padding: 2px 4px; border-radius: 3px; font-family: monospace;">$1</code>')
+			.replace(/`([^`]+)`/g, '<code style="background: #f5f5f5; padding: 2px 4px; border-radius: 3px; font-family: monospace; font-size: 13px;">$1</code>')
 			// 代码块
-			.replace(/```([\s\S]*?)```/g, '<pre style="background: #f5f5f5; padding: 12px; border-radius: 6px; overflow-x: auto;"><code>$1</code></pre>')
+			.replace(/```([\s\S]*?)```/g, '<pre style="background: #f5f5f5; padding: 12px; border-radius: 6px; overflow-x: auto; margin: 8px 0;"><code>$1</code></pre>')
 			// 链接
 			.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" style="color: #0969da;">$1</a>')
-			// 列表
-			.replace(/^-\s+(.*)$/gm, '<li>$1</li>')
-			.replace(/^\d+\.\s+(.*)$/gm, '<li>$1</li>')
-			// 换行
+			// 图片
+			.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width: 100%; border-radius: 4px;">')
+			// 无序列表
+			.replace(/^-\s+(.*)$/gm, '<li style="margin: 4px 0;">$1</li>')
+			// 有序列表
+			.replace(/^\d+\.\s+(.*)$/gm, '<li style="margin: 4px 0;">$1</li>')
+			// 水平线
+			.replace(/^---$/gm, '<hr style="border: none; border-top: 1px solid #ddd; margin: 16px 0;">')
+			// 引用
+			.replace(/^>\s+(.*)$/gm, '<blockquote style="border-left: 3px solid #ddd; padding-left: 12px; margin: 8px 0; color: #666;">$1</blockquote>')
+			// 换行 - 在非标签的行末添加<br>
+			.replace(/(<li.*?>.*?<\/li>)\n/g, '$1')
+			.replace(/(<h[1-6].*?>.*?<\/h[1-6]>)\n/g, '$1')
+			.replace(/(<pre.*?>.*?<\/pre>)\n/g, '$1')
+			.replace(/(<blockquote.*?>.*?<\/blockquote>)\n/g, '$1')
 			.replace(/\n/g, '<br>');
 
 		// 包装列表
-		html = html.replace(/(<li>.*<\/li>)+/g, '<ul>$&</ul>');
+		html = html.replace(/(<li.*?<\/li>)+/g, '<ul style="margin: 8px 0; padding-left: 20px;">$&</ul>');
 		
-		return `<div style="word-wrap: break-word;">${html}</div>`;
+		// 清理空的p标签
+		html = html.replace(/<br>$/gm, '');
+		
+		return `<div style="word-wrap: break-word; line-height: 1.6;">${html}</div>`;
 	}
 
 	// 导出所有图片

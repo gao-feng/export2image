@@ -4,15 +4,16 @@
   "description": "根据文档长度、标题个数和手机屏幕尺寸生成图片并导出",
   "main": "main.js",
   "scripts": {
-    "build": "tsc -b",
-    "dev": "tsc -w"
+    "build": "node build.js",
+    "dev": "node build.js --watch"
   },
   "dependencies": {
-    "html2canvas": "^1.4.1",
-    "file-saver": "^2.0.5"
+    "file-saver": "^2.0.5",
+    "html2canvas": "^1.4.1"
   },
   "devDependencies": {
     "@types/file-saver": "^2.0.7",
+    "esbuild": "^0.27.3",
     "obsidian": "^1.4.0",
     "typescript": "^5.3.0"
   }
