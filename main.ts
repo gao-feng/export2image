@@ -74,6 +74,29 @@ export default class Export2ImagePlugin extends Plugin {
 		await this.saveData(this.settings);
 	}
 
+	// 解析 #e2i 标签标记的内容块
+	parseE2iBlocks(content: string): string[] | null {
+		// 使用正则表达式匹配 #e2i 标记的内容
+		// 支持 #e2i 或 #e2i:数字 格式
+		const e2iPattern = /#e2i(?::\d+)?\s*\n?([\s\S]*?)(?=#e2i(?::\d+)?|$)/gi;
+		
+		const blocks: string[] = [];
+		let match;
+		let hasE2iTag = false;
+
+		while ((match = e2iPattern.exec(content)) !== null) {
+			hasE2iTag = true;
+			const blockContent = match[1].trim();
+			if (blockContent) {
+				blocks.push(blockContent);
+			}
+		}
+
+		// 如果找到 #e2i 标签，返回解析后的内容块
+		// 否则返回 null 表示使用默认的自动分割逻辑
+		return hasE2iTag ? blocks : null;
+	}
+
 	// 分析文档内容
 	analyzeContent(content: string): { length: number; headingCount: number; paragraphs: string[] } {
 		const lines = content.split('\n');
@@ -173,15 +196,35 @@ export default class Export2ImagePlugin extends Plugin {
 		new Notice('开始生成图片...');
 
 		try {
-			// 分析内容
-			const analysis = this.analyzeContent(content);
+			// 先检查是否有 #e2i 标签
+			const e2iBlocks = this.parseE2iBlocks(content);
 			
-			// 计算图片参数
-			const params = this.calculateImageParams(analysis);
-			
-			// 显示设置对话框
-			const modal = new ExportPreviewModal(this.app, this, content, analysis, params);
-			modal.open();
+			if (e2iBlocks && e2iBlocks.length > 0) {
+				// 使用 #e2i 标签标记的内容
+				new Notice(`发现 ${e2iBlocks.length} 个 #e2i 标记的内容块`);
+				
+				// 计算图片参数
+				const combinedContent = e2iBlocks.join('\n\n');
+				const analysis = this.analyzeContent(combinedContent);
+				const params = {
+					imageCount: e2iBlocks.length,
+					imageWidth: 0, // 稍后设置
+					imageHeight: 0,
+					chunkSize: 1
+				};
+				
+				// 显示预览对话框，传入 e2iBlocks
+				const modal = new ExportPreviewModal(this.app, this, content, analysis, params, e2iBlocks);
+				modal.open();
+			} else {
+				// 使用默认的自动分割逻辑
+				const analysis = this.analyzeContent(content);
+				const params = this.calculateImageParams(analysis);
+				
+				// 显示设置对话框
+				const modal = new ExportPreviewModal(this.app, this, content, analysis, params);
+				modal.open();
+			}
 			
 		} catch (error) {
 			console.error('Export error:', error);
@@ -378,13 +421,15 @@ class ExportPreviewModal extends Modal {
 	content: string;
 	analysis: { length: number; headingCount: number; paragraphs: string[] };
 	params: { imageCount: number; imageWidth: number; imageHeight: number; chunkSize: number };
+	e2iBlocks?: string[];
 
-	constructor(app: App, plugin: Export2ImagePlugin, content: string, analysis: any, params: any) {
+	constructor(app: App, plugin: Export2ImagePlugin, content: string, analysis: any, params: any, e2iBlocks?: string[]) {
 		super(app);
 		this.plugin = plugin;
 		this.content = content;
 		this.analysis = analysis;
 		this.params = params;
+		this.e2iBlocks = e2iBlocks;
 	}
 
 	onOpen() {
@@ -395,13 +440,38 @@ class ExportPreviewModal extends Modal {
 		
 		// 显示分析结果
 		const statsDiv = contentEl.createDiv();
-		statsDiv.innerHTML = `
-			<p><strong>文档长度:</strong> ${this.analysis.length} 字符</p>
-			<p><strong>标题个数:</strong> ${this.analysis.headingCount}</p>
-			<p><strong>生成图片数量:</strong> ${this.params.imageCount}</p>
-			<p><strong>图片尺寸:</strong> ${this.params.imageWidth} x ${this.params.imageHeight}px</p>
-			<hr>
-		`;
+		
+		if (this.e2iBlocks && this.e2iBlocks.length > 0) {
+			// 使用 #e2i 标签模式
+			statsDiv.innerHTML = `
+				<p><strong>模式:</strong> #e2i 标签标记</p>
+				<p><strong>生成图片数量:</strong> ${this.e2iBlocks.length}</p>
+				<hr>
+				<h3>内容块预览:</h3>
+			`;
+			
+			// 显示每个内容块的预览
+			this.e2iBlocks.forEach((block, index) => {
+				const blockPreview = contentEl.createDiv();
+				blockPreview.style.marginBottom = '10px';
+				blockPreview.style.padding = '8px';
+				blockPreview.style.backgroundColor = 'var(--background-secondary)';
+				blockPreview.style.borderRadius = '4px';
+				
+				const previewText = block.length > 100 ? block.substring(0, 100) + '...' : block;
+				blockPreview.innerHTML = `<strong>图片 ${index + 1}:</strong><br><pre style="white-space: pre-wrap; margin: 4px 0;">${previewText}</pre>`;
+			});
+		} else {
+			// 使用自动分割模式
+			statsDiv.innerHTML = `
+				<p><strong>模式:</strong> 自动分割</p>
+				<p><strong>文档长度:</strong> ${this.analysis.length} 字符</p>
+				<p><strong>标题个数:</strong> ${this.analysis.headingCount}</p>
+				<p><strong>生成图片数量:</strong> ${this.params.imageCount}</p>
+				<p><strong>图片尺寸:</strong> ${this.params.imageWidth} x ${this.params.imageHeight}px</p>
+				<hr>
+			`;
+		}
 		
 		// 导出按钮
 		const exportBtn = contentEl.createEl('button', { text: '导出图片' });
@@ -420,10 +490,17 @@ class ExportPreviewModal extends Modal {
 
 	async doExport() {
 		try {
-			// 将内容分段
-			const contents: string[] = [];
-			for (let i = 0; i < this.analysis.paragraphs.length; i += this.params.chunkSize) {
-				contents.push(this.analysis.paragraphs.slice(i, i + this.params.chunkSize).join('\n\n'));
+			let contents: string[];
+			
+			// 如果有 e2iBlocks，使用它们；否则按默认逻辑分段
+			if (this.e2iBlocks && this.e2iBlocks.length > 0) {
+				contents = this.e2iBlocks;
+			} else {
+				// 将内容分段
+				contents = [];
+				for (let i = 0; i < this.analysis.paragraphs.length; i += this.params.chunkSize) {
+					contents.push(this.analysis.paragraphs.slice(i, i + this.params.chunkSize).join('\n\n'));
+				}
 			}
 
 			// 获取当前文件名
