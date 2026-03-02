@@ -1,0 +1,366 @@
+import { Notice, PluginSettingTab, Modal, MarkdownView, Plugin } from 'obsidian';
+import html2canvas from 'html2canvas';
+import { saveAs } from 'file-saver';
+// 手机屏幕尺寸配置
+const PHONE_SIZES = {
+    'iPhone SE': { width: 375, height: 667 },
+    'iPhone 14': { width: 390, height: 844 },
+    'iPhone 14 Pro Max': { width: 430, height: 932 },
+    'iPhone 15': { width: 393, height: 852 },
+    'iPhone 15 Pro Max': { width: 430, height: 932 },
+    'Android Small': { width: 360, height: 640 },
+    'Android Medium': { width: 360, height: 800 },
+    'Android Large': { width: 412, height: 915 },
+    'Custom': { width: 375, height: 812 }
+};
+export default class Export2ImagePlugin extends Plugin {
+    constructor() {
+        super(...arguments);
+        this.settings = {
+            phoneModel: 'iPhone 14',
+            customWidth: 375,
+            customHeight: 812,
+            imageFormat: 'png',
+            imageQuality: 1,
+            showLineNumbers: false,
+            padding: 16,
+            fontSize: 14,
+            theme: 'auto'
+        };
+    }
+    async onload() {
+        await this.loadSettings();
+        // 添加ribbon图标
+        this.addRibbonIcon('image-plus', '导出为图片', async () => {
+            await this.exportCurrentNote();
+        });
+        // 添加命令
+        this.addCommand({
+            id: 'export-current-note-to-image',
+            name: '导出当前笔记为图片',
+            callback: async () => {
+                await this.exportCurrentNote();
+            }
+        });
+        // 添加设置界面
+        this.addSettingTab(new ExportSettingTab(this.app, this));
+    }
+    onunload() {
+        console.log('Export2Image plugin unloaded');
+    }
+    async loadSettings() {
+        this.settings = Object.assign({}, this.settings, await this.loadData());
+    }
+    async saveSettings() {
+        await this.saveData(this.settings);
+    }
+    // 分析文档内容
+    analyzeContent(content) {
+        const lines = content.split('\n');
+        const paragraphs = [];
+        let currentParagraph = '';
+        let headingCount = 0;
+        lines.forEach(line => {
+            if (line.match(/^#{1,6}\s/)) {
+                headingCount++;
+                if (currentParagraph.trim()) {
+                    paragraphs.push(currentParagraph.trim());
+                }
+                currentParagraph = '';
+            }
+            else if (line.trim()) {
+                currentParagraph += line + '\n';
+            }
+            else {
+                if (currentParagraph.trim()) {
+                    paragraphs.push(currentParagraph.trim());
+                }
+                currentParagraph = '';
+            }
+        });
+        if (currentParagraph.trim()) {
+            paragraphs.push(currentParagraph.trim());
+        }
+        return {
+            length: content.length,
+            headingCount,
+            paragraphs
+        };
+    }
+    // 计算图片参数
+    calculateImageParams(analysis) {
+        // 获取屏幕尺寸
+        let width, height;
+        if (this.settings.phoneModel === 'Custom') {
+            width = this.settings.customWidth;
+            height = this.settings.customHeight;
+        }
+        else {
+            const size = PHONE_SIZES[this.settings.phoneModel];
+            width = size.width;
+            height = size.height;
+        }
+        // 根据文档长度计算需要的图片数量
+        // 假设每1000字符大约需要400px高度
+        const estimatedContentHeight = Math.ceil(analysis.length / 1000) * 400 + analysis.headingCount * 60;
+        // 根据标题数量调整（标题之间需要更多空间）
+        const titleBonus = analysis.headingCount * 30;
+        const totalHeight = estimatedContentHeight + titleBonus;
+        // 计算需要的图片数量
+        const availableHeight = height - 80; // 留出一些边距
+        let imageCount = Math.max(1, Math.ceil(totalHeight / availableHeight));
+        // 限制最大图片数量
+        imageCount = Math.min(imageCount, 10);
+        // 计算每张图片应该显示多少内容
+        const chunkSize = Math.ceil(analysis.paragraphs.length / imageCount);
+        return {
+            imageCount,
+            imageWidth: width,
+            imageHeight: height,
+            chunkSize
+        };
+    }
+    // 导出当前笔记
+    async exportCurrentNote() {
+        const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (!activeView) {
+            new Notice('请先打开一个笔记文件');
+            return;
+        }
+        const content = activeView.editor.getValue();
+        if (!content.trim()) {
+            new Notice('笔记内容为空');
+            return;
+        }
+        new Notice('开始生成图片...');
+        try {
+            // 分析内容
+            const analysis = this.analyzeContent(content);
+            // 计算图片参数
+            const params = this.calculateImageParams(analysis);
+            // 显示设置对话框
+            const modal = new ExportPreviewModal(this.app, this, content, analysis, params);
+            modal.open();
+        }
+        catch (error) {
+            console.error('Export error:', error);
+            new Notice('导出失败: ' + error.message);
+        }
+    }
+    // 生成单张图片
+    async generateImage(content, width, height, index, total) {
+        // 创建临时容器
+        const container = document.createElement('div');
+        container.style.position = 'absolute';
+        container.style.left = '-9999px';
+        container.style.top = '0';
+        container.style.width = `${width}px`;
+        container.style.minHeight = `${height}px`;
+        container.style.padding = `${this.settings.padding}px`;
+        container.style.fontSize = `${this.settings.fontSize}px`;
+        container.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        container.style.backgroundColor = this.settings.theme === 'dark' ? '#1e1e1e' : '#ffffff';
+        container.style.color = this.settings.theme === 'dark' ? '#d4d4d4' : '#333333';
+        container.style.lineHeight = '1.6';
+        container.style.overflow = 'hidden';
+        // 转换Markdown内容为HTML
+        const htmlContent = this.markdownToHtml(content);
+        container.innerHTML = htmlContent;
+        document.body.appendChild(container);
+        try {
+            const canvas = await html2canvas(container, {
+                width,
+                height: Math.max(height, container.scrollHeight),
+                scale: 2,
+                useCORS: true,
+                allowTaint: true,
+                backgroundColor: this.settings.theme === 'dark' ? '#1e1e1e' : '#ffffff',
+                logging: false
+            });
+            return new Promise((resolve, reject) => {
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        resolve(blob);
+                    }
+                    else {
+                        reject(new Error('Failed to create blob'));
+                    }
+                }, `image/${this.settings.imageFormat}`, this.settings.imageQuality);
+            });
+        }
+        finally {
+            document.body.removeChild(container);
+        }
+    }
+    // 简单的Markdown转HTML
+    markdownToHtml(markdown) {
+        let html = markdown
+            // 标题
+            .replace(/^######\s+(.*)$/gm, '<h6>$1</h6>')
+            .replace(/^#####\s+(.*)$/gm, '<h5>$1</h5>')
+            .replace(/^####\s+(.*)$/gm, '<h4>$1</h4>')
+            .replace(/^###\s+(.*)$/gm, '<h3>$1</h3>')
+            .replace(/^##\s+(.*)$/gm, '<h2>$1</h2>')
+            .replace(/^#\s+(.*)$/gm, '<h1>$1</h1>')
+            // 粗体
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            // 斜体
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            // 代码
+            .replace(/`([^`]+)`/g, '<code style="background: #f5f5f5; padding: 2px 4px; border-radius: 3px; font-family: monospace;">$1</code>')
+            // 代码块
+            .replace(/```([\s\S]*?)```/g, '<pre style="background: #f5f5f5; padding: 12px; border-radius: 6px; overflow-x: auto;"><code>$1</code></pre>')
+            // 链接
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" style="color: #0969da;">$1</a>')
+            // 列表
+            .replace(/^-\s+(.*)$/gm, '<li>$1</li>')
+            .replace(/^\d+\.\s+(.*)$/gm, '<li>$1</li>')
+            // 换行
+            .replace(/\n/g, '<br>');
+        // 包装列表
+        html = html.replace(/(<li>.*<\/li>)+/g, '<ul>$&</ul>');
+        return `<div style="word-wrap: break-word;">${html}</div>`;
+    }
+    // 导出所有图片
+    async exportImages(contents, baseName) {
+        const params = this.calculateImageParams(this.analyzeContent(contents.join('\n')));
+        for (let i = 0; i < contents.length; i++) {
+            const blob = await this.generateImage(contents[i], params.imageWidth, params.imageHeight, i + 1, contents.length);
+            const fileName = contents.length > 1
+                ? `${baseName}_${i + 1}.${this.settings.imageFormat}`
+                : `${baseName}.${this.settings.imageFormat}`;
+            saveAs(blob, fileName);
+            new Notice(`已导出: ${fileName}`);
+        }
+    }
+}
+// 设置界面
+class ExportSettingTab extends PluginSettingTab {
+    constructor(app, plugin) {
+        super(app, plugin);
+        this.plugin = plugin;
+    }
+    display() {
+        const { containerEl } = this;
+        containerEl.empty();
+        containerEl.createEl('h2', { text: '导出图片设置' });
+        // 手机型号选择
+        containerEl.createEl('h3', { text: '手机型号' });
+        const phoneSelect = containerEl.createEl('select');
+        Object.keys(PHONE_SIZES).forEach(model => {
+            const option = document.createElement('option');
+            option.value = model;
+            option.text = model;
+            if (model === this.plugin.settings.phoneModel) {
+                option.selected = true;
+            }
+            phoneSelect.appendChild(option);
+        });
+        // 自定义尺寸
+        containerEl.createEl('h3', { text: '自定义尺寸' });
+        const widthInput = containerEl.createEl('input', { type: 'number', placeholder: '宽度' });
+        widthInput.value = String(this.plugin.settings.customWidth);
+        const heightInput = containerEl.createEl('input', { type: 'number', placeholder: '高度' });
+        heightInput.value = String(this.plugin.settings.customHeight);
+        // 图片格式
+        containerEl.createEl('h3', { text: '图片格式' });
+        const formatSelect = containerEl.createEl('select');
+        ['png', 'jpeg'].forEach(format => {
+            const option = document.createElement('option');
+            option.value = format;
+            option.text = format.toUpperCase();
+            if (format === this.plugin.settings.imageFormat) {
+                option.selected = true;
+            }
+            formatSelect.appendChild(option);
+        });
+        // 字体大小
+        containerEl.createEl('h3', { text: '字体大小' });
+        const fontSizeInput = containerEl.createEl('input', { type: 'number' });
+        fontSizeInput.value = String(this.plugin.settings.fontSize);
+        // 边距
+        containerEl.createEl('h3', { text: '边距' });
+        const paddingInput = containerEl.createEl('input', { type: 'number' });
+        paddingInput.value = String(this.plugin.settings.padding);
+        // 主题
+        containerEl.createEl('h3', { text: '主题' });
+        const themeSelect = containerEl.createEl('select');
+        ['auto', 'light', 'dark'].forEach(theme => {
+            const option = document.createElement('option');
+            option.value = theme;
+            option.text = theme === 'auto' ? '跟随系统' : theme === 'light' ? '浅色' : '深色';
+            if (theme === this.plugin.settings.theme) {
+                option.selected = true;
+            }
+            themeSelect.appendChild(option);
+        });
+        // 保存按钮
+        const saveBtn = containerEl.createEl('button', { text: '保存设置' });
+        saveBtn.addEventListener('click', async () => {
+            this.plugin.settings.phoneModel = phoneSelect.value;
+            this.plugin.settings.customWidth = parseInt(widthInput.value) || 375;
+            this.plugin.settings.customHeight = parseInt(heightInput.value) || 812;
+            this.plugin.settings.imageFormat = formatSelect.value;
+            this.plugin.settings.fontSize = parseInt(fontSizeInput.value) || 14;
+            this.plugin.settings.padding = parseInt(paddingInput.value) || 16;
+            this.plugin.settings.theme = themeSelect.value;
+            await this.plugin.saveSettings();
+            new Notice('设置已保存');
+        });
+    }
+}
+// 预览和导出Modal
+class ExportPreviewModal extends Modal {
+    constructor(app, plugin, content, analysis, params) {
+        super(app);
+        this.plugin = plugin;
+        this.content = content;
+        this.analysis = analysis;
+        this.params = params;
+    }
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+        contentEl.createEl('h2', { text: '导出预览' });
+        // 显示分析结果
+        const statsDiv = contentEl.createDiv();
+        statsDiv.innerHTML = `
+			<p><strong>文档长度:</strong> ${this.analysis.length} 字符</p>
+			<p><strong>标题个数:</strong> ${this.analysis.headingCount}</p>
+			<p><strong>生成图片数量:</strong> ${this.params.imageCount}</p>
+			<p><strong>图片尺寸:</strong> ${this.params.imageWidth} x ${this.params.imageHeight}px</p>
+			<hr>
+		`;
+        // 导出按钮
+        const exportBtn = contentEl.createEl('button', { text: '导出图片' });
+        exportBtn.style.marginRight = '10px';
+        exportBtn.addEventListener('click', async () => {
+            this.close();
+            await this.doExport();
+        });
+        // 取消按钮
+        const cancelBtn = contentEl.createEl('button', { text: '取消' });
+        cancelBtn.addEventListener('click', () => {
+            this.close();
+        });
+    }
+    async doExport() {
+        try {
+            // 将内容分段
+            const contents = [];
+            for (let i = 0; i < this.analysis.paragraphs.length; i += this.params.chunkSize) {
+                contents.push(this.analysis.paragraphs.slice(i, i + this.params.chunkSize).join('\n\n'));
+            }
+            // 获取当前文件名
+            const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+            const baseName = activeView?.file?.basename || 'export';
+            // 导出所有图片
+            await this.plugin.exportImages(contents, baseName);
+            new Notice('导出完成！');
+        }
+        catch (error) {
+            console.error('Export error:', error);
+            new Notice('导出失败: ' + error.message);
+        }
+    }
+}

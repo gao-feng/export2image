@@ -1,0 +1,11 @@
+{
+	"id": "export2image",
+	"name": "Export to Image",
+	"version": "1.0.0",
+	"description": "根据文档长度、标题个数和手机屏幕尺寸生成图片并导出",
+	"author": "Your Name",
+	"authorUrl": "https://github.com/yourname",
+	"isDesktopOnly": true,
+	"minAppVersion": "0.15.0",
+	"main": "main.js"
+}
