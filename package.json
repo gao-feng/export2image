@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "file-saver": "^2.0.5",
-    "html2canvas": "^1.4.1"
+    "html2canvas": "^1.4.1",
+    "marked": "^17.0.3"
   },
   "devDependencies": {
     "@types/file-saver": "^2.0.7",
