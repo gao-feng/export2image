@@ -11,3 +11,5 @@ export2image
 
 # Logs
 *.log
+
+package-lock.json
