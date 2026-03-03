@@ -68,6 +68,92 @@
 - 如果文档较长，会自动生成多张图片
 - 建议在导出前预览一下生成参数
 
+## 编译 CLI 工具
+
+### 安装依赖
+
+```bash
+npm install
+```
+
+### 编译 CLI 工具
+
+```bash
+# 编译 CLI 工具（生成 export2image 可执行文件）
+npm run build:cli
+
+# 或者同时编译插件和 CLI
+npm run build:all
+```
+
+### CLI 使用方法
+
+#### 基本用法
+
+```bash
+export2image -i <输入文件> -o <输出文件>
+```
+
+#### 命令行选项
+
+| 选项 | 简写 | 描述 | 默认值 |
+|------|------|------|--------|
+| `--input` | `-i` | 输入的 Markdown 文件路径 (必需) | - |
+| `--output` | `-o` | 输出图片路径 (必需) | - |
+| `--phone` | `-p` | 手机型号 | `iPhone 14` |
+| `--theme` | `-t` | 主题: `light` 或 `dark` | `light` |
+| `--padding` | - | 内容内边距 (像素) | `16` |
+| `--font-size` | - | 字体大小 (像素) | `14` |
+| `--help` | `-h` | 显示帮助信息 | - |
+
+#### 支持的手机型号
+
+- `iPhone SE` (375 x 667)
+- `iPhone 14` (390 x 844)
+- `iPhone 14 Pro Max` (430 x 932)
+- `iPhone 15` (393 x 852)
+- `iPhone 15 Pro Max` (430 x 932)
+- `Android Small` (360 x 640)
+- `Android Medium` (360 x 800)
+- `Android Large` (412 x 915)
+
+#### 使用示例
+
+```bash
+# 基本用法
+export2image -i note.md -o output.png
+
+# 指定手机型号和深色主题
+export2image -i note.md -o output.png -p "iPhone 15" -t dark
+
+# 自定义内边距和字体大小
+export2image -i note.md -o output.png --padding 20 --font-size 16
+
+# 输出 JPEG 格式
+export2image -i note.md -o output.jpg
+```
+
+#### #e2i 标签
+
+你可以在 Markdown 中使用 `#e2i` 标签来标记需要导出为图片的内容块：
+
+```markdown
+#e2i
+这里是第一张图片的内容
+- 列表项1
+- 列表项2
+#e2i
+
+#e2i
+这里是第二张图片的内容
+> 引用文字
+#e2i
+
+其他内容不会被导出
+```
+
+每个 `#e2i` 标签之间的内容会被单独导出为一张图片。
+
 ## 许可证
 
 MIT License

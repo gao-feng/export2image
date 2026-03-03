@@ -13,3 +13,4 @@ export2image
 *.log
 
 package-lock.json
+main.js
